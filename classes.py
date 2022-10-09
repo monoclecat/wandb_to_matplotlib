@@ -22,7 +22,7 @@ class Operation:
 class PlotDef:
     key_regexp: Tuple
     color_alpha: float = 1.0
-    legend_name: Optional[str] = None
+    add_to_legend: bool = True
 
 
 @dataclass
@@ -81,7 +81,7 @@ class Metrics:
 
 
 class Group:
-    def __init__(self, key_path, color=None, filter: Optional[List[str]] = None, child_group: Optional = None,
+    def __init__(self, key_path, readable_name, color=None, filter: Optional[List[str]] = None, child_group: Optional = None,
                  operations: Optional[List[Operation]] = None):
         if isinstance(key_path, list):
             self.__key_path = []
@@ -91,6 +91,7 @@ class Group:
                 self.__key_path.append(key)
         else:
             self.__key_path = [key_path]
+        self.__name = readable_name
         self.__filter = filter
         self.__color = color
         self.__child_group = child_group
@@ -105,6 +106,10 @@ class Group:
         else:
             val = d
         return val
+
+    @property
+    def name(self):
+        return self.__name
 
     @property
     def operations(self):
@@ -123,7 +128,7 @@ class Group:
         return self.__subgroups
 
     @property
-    def name(self):
+    def key(self):
         return self.__key_path[-1]
 
     @property
@@ -181,7 +186,7 @@ class Group:
             m.metrics.update(new_metrics)
             self.__operation_results = m
 
-    def plot(self, plot_options: List[PlotDef], group_mapping: Dict = None):
+    def plot(self, plot_options: List[PlotDef], figure_options: Optional[Dict], group_mapping: Dict = None):
         if any(have_res := [g.operation_results is not None for g in self.__subgroups.values()]):
             assert all(have_res)
             fig, (ax1) = plt.subplots(1, figsize=(10, 10), dpi=200)
@@ -189,10 +194,14 @@ class Group:
                 res = g.operation_results.metrics
                 x = g.operation_results.steps
                 for opt in plot_options:
+                    if group_mapping is not None and opt.add_to_legend:
+                        g_label = group_mapping[g_name] if g_name in group_mapping.keys() else g_name
+                    else:
+                        g_label = None
                     plot_kwargs = {
                         'color': self.color[g_index],
                         'alpha': opt.color_alpha,
-                        'label': group_mapping[g_name] if g_name in group_mapping.keys() else g_name,
+                        'label': g_label,
                     }
                     if len(opt.key_regexp) == 1:
                         y_pattern = opt.key_regexp[0]
@@ -218,15 +227,11 @@ class Group:
                         ax1.fill_between(x=x, y1=res[y1_key], y2=res[y2_key], **plot_kwargs)
                     else:
                         raise NotImplementedError(f"Don't know what to do with {len(opt.key_regexp)} keys to plot")
-                print(1)
             ax1.legend()
-            print(2)
-
-
-
-
+            return fig
         else:
-            [g.plot(plot_options) for g in self.__subgroups.values()]
+            return [g.plot(plot_options=plot_options, figure_options=figure_options, group_mapping=group_mapping)
+                    for g in self.__subgroups.values()]
 
     def aggregate_metrics(self) -> Metrics:
         metrics = [g.aggregate_metrics() for g in self.__subgroups.values()]
@@ -241,6 +246,6 @@ class Group:
 
     def __repr__(self):
         if isinstance(self.__child_group, Group):
-            return f"{self.name}: {self.__subgroups}"
+            return f"{self.key}: {self.__subgroups}"
         else:
-            return f"{self.name}: {self.__subgroups.keys()}"
+            return f"{self.key}: {self.__subgroups.keys()}"

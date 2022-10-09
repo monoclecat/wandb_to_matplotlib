@@ -22,13 +22,16 @@ if __name__ == "__main__":
     --- exp_dir
     """
     cmap = mpl.cm.get_cmap('tab10')
-    jf_group = Group(
+    group = Group(
             key_path=['joint_failure_prob'],
+            readable_name='Joint Failure Prob.',
             child_group=Group(
                 key_path=['policy_kwargs', 'actor_cspn_args', 'entropy_objective'],
+                readable_name='Entropy Objective',
                 color=cmap.colors,
                 child_group=Group(
                     key_path=['seed'],
+                    readable_name='seed',
                     operations=[Operation(np.min, 'min'), Operation(np.mean, 'mean'), Operation(np.max, 'max')],
                     child_group=MetricsDef(step_key='time/total_timesteps', keys_to_plot=['rollout/ep_rew_mean'])
                 )
@@ -45,9 +48,9 @@ if __name__ == "__main__":
                     config = yaml.safe_load(file)
                 data = pd.read_csv(os.path.join(exp_dir, 'progress.csv'))
                 config['data'] = data
-                jf_group.add_run(config)
+                group.add_run(config)
     del data, config, exp_dir, file, wandb_run_files
 
-    print(jf_group.data_count)
-    with open(os.path.join(args.dir, f"{jf_group.name}.pickle"), 'wb') as f:
-        pickle.dump(jf_group, f, pickle.HIGHEST_PROTOCOL)
+    print(group.data_count)
+    with open(os.path.join(args.dir, f"{group.name}.pickle"), 'wb') as f:
+        pickle.dump(group, f, pickle.HIGHEST_PROTOCOL)
