@@ -1,10 +1,11 @@
-from typing import List, Dict, Optional, Tuple, Any, Callable
+import os
+from typing import List, Dict, Optional, Tuple, Any, Callable, Type
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import yaml
-import re
+import matplotlib as mpl
 import copy
 from dataclasses import dataclass
 
@@ -28,7 +29,9 @@ class PlotDef:
 @dataclass
 class MetricsDef:
     keys_to_plot: list
+    min_steps: int = None
     step_key: str = 'steps'
+    dtype: Type = np.float32
 
 
 class Metrics:
@@ -46,22 +49,36 @@ class Metrics:
         if isinstance(df, pd.DataFrame):
             df = dict(df)
             df = {k: np.asarray(v) for k, v in df.items()}
+        existing_max_step = self.steps[-1] if self.steps is not None else None
         df_steps = df[self.__config.step_key]
-        min_of_max_steps = df_steps.max()
+        df_step_max = df_steps[-1]
+        pad_len = None
         if self.steps is None:
-            self.steps = np.arange(df_steps.max())
+            self.steps = np.arange(df_step_max+1)
         else:
-            min_of_max_steps = np.min((self.steps.max(), df_steps.max()))
-            self.steps = np.arange(min_of_max_steps)
+            pad_len = np.abs(existing_max_step - df_step_max)
+            new_max_step = np.max((existing_max_step, df_step_max))
+            self.steps = np.arange(new_max_step+1)
         for key in self.__config.keys_to_plot:
-            interp_key = np.interp(np.arange(df_steps.max()), df_steps, df[key])
+            interp_key = np.interp(np.arange(df_step_max+1), df_steps, df[key])
+            interp_key = np.array(interp_key, dtype=self.__config.dtype)
             if key not in self.__metrics.keys():
                 self.__metrics[key] = interp_key
             else:
-                self.__metrics[key] = self.__metrics[key][..., :min_of_max_steps]
-                interp_key = interp_key[..., :min_of_max_steps]
-                self.__metrics[key] = np.vstack((self.__metrics[key], interp_key))
+                m_key = self.__metrics[key]
+                if df_step_max < existing_max_step:
+                    pad = m_key[..., -pad_len:]
+                    if len(m_key.shape) > 1:
+                        pad = pad.mean(axis=0)
+                    interp_key = np.hstack((interp_key, pad))
+                elif df_step_max > existing_max_step:
+                    pad = interp_key[-pad_len:]
+                    if len(m_key.shape) > 1:
+                        pad = pad[np.newaxis].repeat(m_key.shape[0], axis=0)
+                    m_key = np.hstack((m_key, pad))
+                self.__metrics[key] = np.vstack((m_key, interp_key))
             assert self.__metrics[key].shape[-1] == self.steps.shape[-1]
+        return None
 
     def keys(self):
         return self.__config.keys_to_plot
@@ -73,11 +90,55 @@ class Metrics:
     def metrics(self):
         return self.__metrics
 
+    @property
+    def empty(self):
+        return self.steps is None
+
     def __getitem__(self, item):
         return self.__metrics[item]
 
     def __repr__(self):
-        return f"{'empty' if self.steps is None else 'filled'} {', '.join([k for k in self.__metrics.keys()])}"
+        return f"{'empty' if self.empty else 'filled'} {', '.join([k for k in self.__metrics.keys()])}"
+
+
+def build_group_from_kwargs(d: Dict):
+    if 'child_group' in d.keys():
+        new_ops = None
+        if (ops := d.get('operations')) is not None:
+            new_ops = []
+            for op in ops:
+                if op == 'min':
+                    new_ops.append(Operation(np.min, 'min'))
+                elif op == 'mean':
+                    new_ops.append(Operation(np.mean, 'mean'))
+                elif op == 'max':
+                    new_ops.append(Operation(np.max, 'max'))
+                else:
+                    raise NotImplementedError()
+        return Group(
+            key_path=d.get('key_path'),
+            readable_name=d.get('readable_name'),
+            color=mpl.cm.get_cmap(col).colors if (col := d.get('color')) is not None else None,
+            operations=new_ops,
+            child_group=build_group_from_kwargs(d.get('child_group'))
+        )
+    else:
+        data_type = d.get('dtype')
+        if data_type is not None:
+            if 'float64' in data_type:
+                data_type = np.float64
+            if 'float32' in data_type:
+                data_type = np.float32
+            if 'float16' in data_type:
+                data_type = np.float16
+            else:
+                raise NotImplementedError()
+        return MetricsDef(
+            step_key=d.get('step_key'),
+            min_steps=int(float(s)) if (s := d.get('min_steps')) is not None else None,
+            keys_to_plot=d.get('keys_to_plot'),
+            dtype=data_type,
+        )
 
 
 class Group:
@@ -148,15 +209,18 @@ class Group:
                 self.__subgroups[key] = Metrics(self.__child_group)
             self.__subgroups = {k: v for k, v in sorted(self.__subgroups.items(), key=lambda x: x[0])}
         if isinstance(self.__child_group, Group):
-            self.__subgroups[key].add_run(run)
+            return self.__subgroups[key].add_run(run)
         else:
             # A Metrics object should be appended! copy.deepcopy(self.__child_group)
-            self.__subgroups[key].add(run['data'])
+            return self.__subgroups[key].add(run['data'])
 
     def follow_key_path(self, d: Dict):
         val = d
-        for k in self.__key_path:
-            val = self.get_value(val[k])
+        try:
+            for k in self.__key_path:
+                val = self.get_value(val[k])
+        except KeyError:
+            raise KeyError(str(self.__key_path))
         if self.__filter is not None:
             assert isinstance(val, str)
             new_val = None
@@ -183,13 +247,19 @@ class Group:
             for k in m.keys():
                 for op in self.__operations:
                     new_metrics[f"{op.name}_{k}"] = op.op(m[k], axis=0)
+                m.metrics.pop(k)
             m.metrics.update(new_metrics)
             self.__operation_results = m
 
-    def plot(self, plot_options: List[PlotDef], figure_options: Optional[Dict], group_mapping: Dict = None):
+    def plot(self, plot_options: List[PlotDef], title_prefix: str = None,
+             figure_options: Dict = None, group_mapping: Dict = None):
         if any(have_res := [g.operation_results is not None for g in self.__subgroups.values()]):
             assert all(have_res)
-            fig, (ax1) = plt.subplots(1, figsize=(10, 10), dpi=200)
+            fig, (ax1) = plt.subplots(
+                1,
+                figsize=size if (size := figure_options.get('size')) else (10, 10),
+                dpi=dpi if (dpi := figure_options.get('dpi')) else 200,
+            )
             for g_index, (g_name, g) in enumerate(self.__subgroups.items()):
                 res = g.operation_results.metrics
                 x = g.operation_results.steps
@@ -227,18 +297,35 @@ class Group:
                         ax1.fill_between(x=x, y1=res[y1_key], y2=res[y2_key], **plot_kwargs)
                     else:
                         raise NotImplementedError(f"Don't know what to do with {len(opt.key_regexp)} keys to plot")
-            ax1.legend()
-            return fig
+            ax1.legend(title='Policy', loc='best' if (loc := figure_options.get('legend_loc')) is None else loc)
+            ax1.set_title(title_prefix)
+            if (x_axis_label := figure_options.get('x_axis_label')) is not None:
+                ax1.set_xlabel(x_axis_label)
+            if (y_axis_label := figure_options.get('y_axis_label')) is not None:
+                ax1.set_ylabel(y_axis_label)
+            if (x_axis_range := figure_options.get('x_axis_range')) is not None:
+                assert len(x_axis_range) == 2
+                ax1.set_xbound(x_axis_range[0], x_axis_range[1])
+            fig.tight_layout()
+            if (path := figure_options.get('save_path')) is not None:
+                file_name = title_prefix.lower().replace('.', '_').replace(' ', '').replace(':', '') + '.png'
+                fig.savefig(os.path.join(path, file_name))
+            else:
+                fig.show()
+            fig.clf()
         else:
-            return [g.plot(plot_options=plot_options, figure_options=figure_options, group_mapping=group_mapping)
-                    for g in self.__subgroups.values()]
+            return [g.plot(
+                plot_options=plot_options,
+                title_prefix=f"{title_prefix} - {self.name}: {k}",
+                figure_options=figure_options,
+                group_mapping=group_mapping
+            ) for k, g in self.__subgroups.items()]
 
     def aggregate_metrics(self) -> Metrics:
         metrics = [g.aggregate_metrics() for g in self.__subgroups.values()]
         new_keys = list(set().union(*[set(m.metrics.keys()) for m in metrics]))
         agg_metric = Metrics(MetricsDef(step_key='steps', keys_to_plot=new_keys))
-        for m in metrics:
-            agg_metric.add({'steps': m.steps, **m.metrics})
+        [agg_metric.add({'steps': m.steps, **m.metrics}) for m in metrics if not m.empty]
         return agg_metric
 
     def metrics(self):
@@ -246,6 +333,8 @@ class Group:
 
     def __repr__(self):
         if isinstance(self.__child_group, Group):
-            return f"{self.key}: {self.__subgroups}"
+            child_repr = '\n' + '\n'.join([f'{k}:' + f'\n{g.__repr__()}'.replace('\n', '\n\t')
+                                    for k, g in self.__subgroups.items()])
+            return f"{self.key}:" + child_repr.replace('\n', '\n\t')
         else:
-            return f"{self.key}: {self.__subgroups.keys()}"
+            return f"{self.key}: {', '.join(str(k) for k in self.__subgroups.keys())}"
