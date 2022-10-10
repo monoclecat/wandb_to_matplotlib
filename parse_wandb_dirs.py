@@ -26,29 +26,9 @@ if __name__ == "__main__":
     """
     with open(args.config, 'r') as file:
         config = yaml.safe_load(file)
-    # cmap = mpl.cm.get_cmap('tab10')
     group = build_group_from_kwargs(config)
-    # group = Group(
-            # key_path=['joint_failure_prob'],
-            # readable_name='Joint Failure Prob.',
-            # child_group=Group(
-                # key_path=['policy_kwargs', 'actor_cspn_args', 'entropy_objective'],
-                # readable_name='Entropy Objective',
-                # color=cmap.colors,
-                # child_group=Group(
-                    # key_path=['seed'],
-                    # readable_name='seed',
-                    # operations=[Operation(np.min, 'min'), Operation(np.mean, 'mean'), Operation(np.max, 'max')],
-                    # child_group=MetricsDef(
-                        # step_key='time/total_timesteps',
-                        # min_steps=int(1e6),
-                        # keys_to_plot=['rollout/ep_rew_mean'],
-                        # dtype=np.float16,
-                    # )
-                # )
-            # )
-        # )
 
+    columns_seen = set()
     assert os.path.isdir(args.dir), f"Path {args.dir} is not a directory!"
     for exp_parent_dir in os.scandir(args.dir):
         if os.path.isdir(exp_parent_dir):
@@ -65,6 +45,7 @@ if __name__ == "__main__":
                 path_to_progress_csv = os.path.join(exp_dir, 'progress.csv')
                 try:
                     data = pd.read_csv(path_to_progress_csv)
+                    columns_seen |= set(data.columns)
                     config['data'] = data
                     err = group.add_run(config)
                     if err is not None:
@@ -74,6 +55,7 @@ if __name__ == "__main__":
                 except KeyError as e:
                     print(log_prefix + f"Could not find keys {e.args[0]} in config.yaml. Skipping.")
     del data, config, exp_dir, file, wandb_run_files
+    print("Columns seen: \n\t{}".format('\n\t'.join([c for c in columns_seen])))
 
     print(group)
     group.apply_operations()

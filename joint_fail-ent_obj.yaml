@@ -11,5 +11,7 @@ child_group:
     child_group:
       step_key: 'time/total_timesteps'
       min_steps: 1e6
-      keys_to_plot: ['rollout/ep_rew_mean', 'train/naive_ent_approx', 'train/huber_entropy_LB', 'train/recursive_ent_approx']
+      keys_to_plot: ['rollout/ep_rew_mean', 'train/naive_ent_approx', 'train/huber_entropy_LB',
+                     'train/recursive_ent_approx',
+                     'train/lay2/rep./weight_entropy/mean']
       dtype: np.float16
