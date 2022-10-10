@@ -54,7 +54,11 @@ if __name__ == "__main__":
         if os.path.isdir(exp_parent_dir):
             for exp_dir in os.scandir(exp_parent_dir):
                 log_prefix = f"{exp_dir.path}: \n\t"
-                wandb_run_files = [fn for fn in os.listdir(os.path.join(exp_dir, 'wandb')) if fn.startswith("run")]
+                wandb_run_files = None
+                if os.path.exists(wandb_path := os.path.join(exp_dir, 'wandb')):
+                    wandb_run_files = [fn for fn in os.listdir(wandb_path) if fn.startswith("run")]
+                if wandb_run_files is None:
+                    continue
                 assert len(wandb_run_files) == 1
                 with open(os.path.join(exp_dir, 'wandb', wandb_run_files[0], 'files', 'config.yaml'), 'r') as file:
                     config = yaml.safe_load(file)

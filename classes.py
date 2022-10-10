@@ -211,7 +211,6 @@ class Group:
         if isinstance(self.__child_group, Group):
             return self.__subgroups[key].add_run(run)
         else:
-            # A Metrics object should be appended! copy.deepcopy(self.__child_group)
             return self.__subgroups[key].add(run['data'])
 
     def follow_key_path(self, d: Dict):
@@ -245,8 +244,20 @@ class Group:
             m = self.aggregate_metrics()
             new_metrics = {}
             for k in m.keys():
+                min_metric = None
+                max_metric = None
                 for op in self.__operations:
-                    new_metrics[f"{op.name}_{k}"] = op.op(m[k], axis=0)
+                    res = op.op(m[k], axis=0)
+                    if op.name == 'min':
+                        min_metric = res
+                    if op.name == 'max':
+                        max_metric = res
+                    new_metrics[f"{op.name}_{k}"] = res
+                if len(m[k].shape) > 1 and m[k].shape[0] > 1 and min_metric is not None and max_metric is not None:
+                    both_same = min_metric == max_metric
+                    for new_k, v in new_metrics.items():
+                        if k in new_k:
+                            new_metrics[new_k] = v[~both_same]
                 m.metrics.pop(k)
             m.metrics.update(new_metrics)
             self.__operation_results = m
@@ -279,7 +290,7 @@ class Group:
                         for k in res.keys():
                             if y_key is None and y_pattern.match(k) is not None:
                                 y_key = k
-                        ax1.plot(x, res[y_key], **plot_kwargs)
+                        ax1.plot(np.arange(res[y_key].shape[0]), res[y_key], **plot_kwargs)
                     elif len(opt.key_regexp) == 2:
                         y1_pattern = opt.key_regexp[0]
                         y1_key = None
@@ -294,7 +305,9 @@ class Group:
                                                    f"in {', '.join([k for k in res.keys()])}"
                         assert y2_key is not None, f"Pattern {y2_pattern.pattern} didn't match any key " \
                                                    f"in {', '.join([k for k in res.keys()])}"
-                        ax1.fill_between(x=x, y1=res[y1_key], y2=res[y2_key], **plot_kwargs)
+                        assert res[y1_key].shape == res[y2_key].shape
+                        ax1.fill_between(x=np.arange(res[y1_key].shape[0]),
+                                         y1=res[y1_key], y2=res[y2_key], **plot_kwargs)
                     else:
                         raise NotImplementedError(f"Don't know what to do with {len(opt.key_regexp)} keys to plot")
             ax1.legend(title='Policy', loc='best' if (loc := figure_options.get('legend_loc')) is None else loc)

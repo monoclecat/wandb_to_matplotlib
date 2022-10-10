@@ -28,7 +28,7 @@ if __name__ == "__main__":
             'save_path': save_path,
             'x_axis_label': 'Steps',
             'y_axis_label': 'Reward',
-            'x_axis_range': [None, int(2.4e6)],
+            'x_axis_range': [None, None],
             'legend_loc': 'lower right',
             'size': (7, 7),
             'dpi': 200,
