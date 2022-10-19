@@ -57,7 +57,6 @@ class Metrics:
     def __init__(self, config: MetricsDef):
         assert config.step_key not in config.keys_to_plot
         self.__config = config
-        self.steps = None
         self.__metrics = {}
 
     @property
@@ -66,49 +65,81 @@ class Metrics:
 
     @property
     def step_delta(self):
-        return self.__config.step_delta
+        return self.config.step_delta
+
+    @property
+    def max_step(self):
+        if self.metrics == {}:
+            return None
+        nr_data_points = list(self.metrics.values())[0].shape[-1]
+        return (nr_data_points - 1) * self.step_delta
+
+    @property
+    def steps(self):
+        max_step = self.max_step
+        if max_step is None:
+            return None
+        steps = np.arange(0, max_step + 1, self.step_delta)
+        assert max_step == steps[-1]
+        return steps
 
     def add(self, df):
         if isinstance(df, pd.DataFrame):
             df = dict(df)
-            df = {k: np.asarray(v) for k, v in df.items()}
-        existing_max_step = self.steps[-1] if self.steps is not None else None
-        df_steps = df[self.__config.step_key]
-        df_step_max = df_steps[-1]
-        pad_len = None
-        if self.steps is None:
-            step_max = round(df_step_max / self.step_delta) * self.step_delta
+            df = {k: np.asarray(v)[np.newaxis, :] for k, v in df.items()}
+            df_steps = df[self.__config.step_key]
+            if len(df_steps.shape) == 2:
+                df_steps = df_steps[0]
+            df_step_max = df_steps[-1]
+        elif isinstance(df, Metrics):
+            df_steps = df.steps
+            df_step_max = df.max_step
         else:
-            pad_len = int(np.abs(existing_max_step - df_step_max) / self.step_delta)
-            step_max = np.max((existing_max_step, df_step_max))
-        self.steps = np.linspace(0, step_max, int(step_max/self.step_delta)+1).astype(int)
+            raise NotImplementedError("df must either be a pandas DataFrame or a Metrics object.")
+
+        self_max_step = self.max_step
+        if self_max_step is None:
+            self_max_step = df_step_max
+
+        pad_len = int((self_max_step - df_step_max) / self.step_delta)
+        assert pad_len == 0 if isinstance(df, pd.DataFrame) else True
+        pad_df = True if pad_len > 0 else False
+        pad_metric = True if pad_len < 0 else False
+        pad_len = abs(pad_len)
+
+        new_max_step = max(self_max_step, df_step_max)
+        new_steps = np.arange(0, new_max_step + self.step_delta, self.step_delta)
+
         for key_regex in self.__config.keys_to_plot:
             keys = [m.string for k in df.keys() if (m := key_regex.match(k)) is not None]
             for key in keys:
-                df_interp = np.interp(self.steps, df_steps, df[key])
-                df_interp = np.array(df_interp, dtype=self.__config.dtype)
-                if key_regex.pattern not in self.__metrics.keys():
-                    self.__metrics[key_regex.pattern] = df_interp
+                assert len(df[key].shape) == 2
+                df_interp = np.vstack([np.interp(new_steps, df_steps, df[key][i]) for i in range(df[key].shape[0])])
+                df_interp = df_interp.astype(self.config.dtype)
+                if key_regex.pattern not in self.metrics.keys():
+                    self.metrics[key_regex.pattern] = df_interp
                 else:
-                    m_key = self.__metrics[key_regex.pattern]
-                    if df_step_max < existing_max_step:
+                    m_key = self.metrics[key_regex.pattern]
+                    if pad_df:
                         pad = m_key[..., -pad_len:]
-                        if len(m_key.shape) > 1:
-                            pad = pad.mean(axis=0)
-                        df_interp[-pad_len:] = pad
-                    elif df_step_max > existing_max_step:
-                        pad = df_interp[-pad_len:]
-                        if len(m_key.shape) > 1:
-                            pad = pad[np.newaxis].repeat(m_key.shape[0], axis=0)
-                        m_key = np.hstack((m_key, pad))
-                    self.__metrics[key_regex.pattern] = np.vstack((m_key, df_interp))
-                assert self.__metrics[key_regex.pattern].shape[-1] == self.steps.shape[-1]
-                existing_max_step = self.steps[-1]
-                df_step_max = existing_max_step
+                        pad = pad.mean(axis=0)
+                        df_interp[..., -pad_len:] = pad
+                    elif pad_metric:
+                        pad = df_interp[..., -pad_len:]
+                        pad = pad.repeat(m_key.shape[0] // df_interp.shape[0], axis=0)
+                        try:
+                            m_key = np.hstack((m_key, pad))
+                        except ValueError:
+                            print(2)
+                    try:
+                        self.__metrics[key_regex.pattern] = np.vstack((m_key, df_interp))
+                    except ValueError:
+                        print(1)
+                assert self.metrics[key_regex.pattern].shape[-1] == self.steps.shape[-1]
+                # existing_max_step = self.steps[-1]
+                # df_step_max = existing_max_step
+        # assert all metrics have same len
         return None
-
-    def keys(self):
-        return self.__metrics.keys()
 
     def aggregate_metrics(self):
         return self
@@ -117,15 +148,18 @@ class Metrics:
     def metrics(self):
         return self.__metrics
 
+    def keys(self):
+        return self.metrics.keys()
+
     @property
     def empty(self):
         return self.steps is None
 
     def __getitem__(self, item):
-        return self.__metrics[item]
+        return self.metrics[item]
 
     def __repr__(self):
-        return f"{'empty' if self.empty else 'filled'} {', '.join([k for k in self.__metrics.keys()])}"
+        return f"{'empty' if self.empty else 'filled'} {', '.join([k for k in self.metrics.keys()])}"
 
 
 def build_group_from_kwargs(d: Dict):
@@ -366,9 +400,9 @@ class Group:
 
     def aggregate_metrics(self) -> Metrics:
         metrics = [g.aggregate_metrics() for g in self.__subgroups.values()]
-        new_keys = list(set().union(*[set(m.config.keys_to_plot()) for m in metrics]))
+        new_keys = list(set().union(*[set(m.config.keys_to_plot) for m in metrics]))
         agg_metric = Metrics(MetricsDef(step_key='steps', keys_to_plot=new_keys))
-        [agg_metric.add({'steps': m.steps, **m.metrics}) for m in metrics if not m.empty]
+        [agg_metric.add(m) for m in metrics if not m.empty]
         return agg_metric
 
     def metrics(self):
