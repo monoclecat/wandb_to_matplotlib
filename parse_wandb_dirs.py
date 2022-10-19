@@ -10,8 +10,6 @@ from classes import *
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dir', '-d', type=str, required=True,
-                        help='Directory containing experiment directories (the project directory)')
     parser.add_argument('--config', '-c', type=str, required=True, help='Path to config file')
     args = parser.parse_args()
 
@@ -25,12 +23,18 @@ if __name__ == "__main__":
     --- exp_dir
     """
     with open(args.config, 'r') as file:
-        config = yaml.safe_load(file)
-    group = build_group_from_kwargs(config)
+        config: dict = yaml.safe_load(file)
+        assert all([k in config.keys() for k in ['parse', 'experiment_dir', 'pickle_save_path']])
+        exp_dir = config.get('experiment_dir')
+        assert os.path.isdir(exp_dir), f"Path {exp_dir} is not a directory!"
+        os.chdir(exp_dir)
+        save_path = config.get('pickle_save_path')
+        assert os.path.exists(base_path := os.path.split(save_path)[0]), \
+            f"Base path {base_path} of pickle_save_path doesn't exist!"
+    group = build_group_from_config(config.get('parse'))
 
     columns_seen = set()
-    assert os.path.isdir(args.dir), f"Path {args.dir} is not a directory!"
-    for exp_parent_dir in os.scandir(args.dir):
+    for exp_parent_dir in os.scandir(exp_dir):
         if os.path.isdir(exp_parent_dir):
             for exp_dir in os.scandir(exp_parent_dir):
                 log_prefix = f"{exp_dir.path}: \n\t"
@@ -59,5 +63,5 @@ if __name__ == "__main__":
 
     print(group)
     group.apply_operations()
-    with open(os.path.join(args.dir, f"{group.key}.pickle"), 'wb') as f:
+    with open(os.path.join(save_path), 'wb') as f:
         pickle.dump(group, f, pickle.HIGHEST_PROTOCOL)

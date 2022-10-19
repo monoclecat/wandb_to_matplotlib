@@ -127,14 +127,8 @@ class Metrics:
                     elif pad_metric:
                         pad = df_interp[..., -pad_len:]
                         pad = pad.repeat(m_key.shape[0] // df_interp.shape[0], axis=0)
-                        try:
-                            m_key = np.hstack((m_key, pad))
-                        except ValueError:
-                            print(2)
-                    try:
-                        self.__metrics[key_regex.pattern] = np.vstack((m_key, df_interp))
-                    except ValueError:
-                        print(1)
+                        m_key = np.hstack((m_key, pad))
+                    self.__metrics[key_regex.pattern] = np.vstack((m_key, df_interp))
                 assert self.metrics[key_regex.pattern].shape[-1] == self.steps.shape[-1]
                 # existing_max_step = self.steps[-1]
                 # df_step_max = existing_max_step
@@ -162,7 +156,7 @@ class Metrics:
         return f"{'empty' if self.empty else 'filled'} {', '.join([k for k in self.metrics.keys()])}"
 
 
-def build_group_from_kwargs(d: Dict):
+def build_group_from_config(d: Dict):
     if 'child_group' in d.keys():
         new_ops = None
         if (ops := d.get('operations')) is not None:
@@ -181,7 +175,7 @@ def build_group_from_kwargs(d: Dict):
             readable_name=d.get('readable_name'),
             color=mpl.cm.get_cmap(col).colors if (col := d.get('color')) is not None else None,
             operations=new_ops,
-            child_group=build_group_from_kwargs(d.get('child_group'))
+            child_group=build_group_from_config(d.get('child_group'))
         )
     else:
         data_type = d.get('dtype')
@@ -200,6 +194,26 @@ def build_group_from_kwargs(d: Dict):
             keys_to_plot=[re.compile(p) for p in d.get('keys_to_plot')],
             dtype=data_type,
         )
+
+
+def build_plot_defs_from_config(d: Dict):
+    fig_opt = d.get('figure_options')
+    plot_defs = []
+    for title, plot_def in d.get('plot_definitions').items():
+        assert 'content' in plot_def.keys()
+        contents = []
+        for content_type, content_kwargs in plot_def.get('content').items():
+            if content_type == 'fill':
+                content_kwargs['key_regexp'] = [re.compile(p) for p in content_kwargs.get('key_regexp')]
+                contents.append(FillDef(**content_kwargs))
+            elif content_type == 'line':
+                content_kwargs['key_regexp'] = re.compile(content_kwargs.get('key_regexp'))
+                contents.append(LineDef(**content_kwargs))
+            else:
+                raise NotImplementedError(f"Don't know what to do with a content type of {content_type}")
+        plot_def.pop('content')
+        plot_defs.append(PlotDef(line_defs=contents, title=title, figure_options=fig_opt, **plot_def))
+    return plot_defs
 
 
 class Group:
@@ -315,16 +329,12 @@ class Group:
                     if op.name == 'max':
                         max_metric = res
                     new_metrics[f"{op.name}_{k}"] = res
-                if len(m[k].shape) > 1 and m[k].shape[0] > 1 and min_metric is not None and max_metric is not None:
-                    both_same = min_metric == max_metric
-                    for new_k, v in new_metrics.items():
-                        if k in new_k:
-                            new_metrics[new_k] = v[~both_same]
                 m.metrics.pop(k)
             m.metrics.update(new_metrics)
             self.__operation_results = m
 
-    def plot(self, plot_option: PlotDef, title_prefix: str = None, group_mapping: Dict = None):
+    def plot(self, plot_option: PlotDef, title_prefix: str = None, fig_save_path: str = None,
+             legend_options: Dict = None):
         if any(have_res := [g.operation_results is not None for g in self.__subgroups.values()]):
             assert all(have_res)
             opt = plot_option
@@ -337,8 +347,8 @@ class Group:
             for g_index, (g_name, g) in enumerate(self.__subgroups.items()):
                 res = g.operation_results
                 for line_def in opt.line_defs:
-                    if group_mapping is not None and line_def.add_to_legend:
-                        g_label = group_mapping[g_name] if g_name in group_mapping.keys() else g_name
+                    if (leg_map := legend_options.get('mapping')) is not None and line_def.add_to_legend:
+                        g_label = leg_map[g_name] if g_name in leg_map.keys() else g_name
                     else:
                         g_label = None
                     plot_kwargs = {
@@ -373,8 +383,10 @@ class Group:
                         ax1.fill_between(x=x, y1=res[y1_key], y2=res[y2_key], **plot_kwargs)
                     else:
                         raise NotImplementedError()
-            ax1.legend(title=opt.legend_title,
-                       loc='best' if (loc := fig_opt.get('legend_loc')) is None else loc)
+            if len(ax1.lines) == 0:
+                print(f"No parsed data found for plot {title_prefix}")
+                return
+            ax1.legend(title=legend_options.get('title'), loc=legend_options.get('loc'))
             ax1.set_title(title_prefix)
             if (x_axis_label := fig_opt.get('x_axis_label')) is not None:
                 ax1.set_xlabel(x_axis_label)
@@ -384,10 +396,10 @@ class Group:
                 assert len(x_axis_range) == 2
                 ax1.set_xbound(x_axis_range[0], x_axis_range[1])
             fig.tight_layout()
-            if (path := fig_opt.get('save_path')) is not None:
+            if fig_save_path is not None:
                 file_name = title_prefix
                 file_name = file_name.lower().replace('.', '_').replace(' ', '').replace(':', '') + '.png'
-                fig.savefig(os.path.join(path, file_name))
+                fig.savefig(os.path.join(fig_save_path, file_name))
             else:
                 fig.show()
             plt.close(fig)
@@ -395,7 +407,8 @@ class Group:
             return [g.plot(
                 plot_option=plot_option,
                 title_prefix=f"{title_prefix} - {self.name}: {k}",
-                group_mapping=group_mapping
+                fig_save_path=fig_save_path,
+                legend_options=legend_options,
             ) for k, g in self.__subgroups.items()]
 
     def aggregate_metrics(self) -> Metrics:
