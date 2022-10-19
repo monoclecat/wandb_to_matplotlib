@@ -1,0 +1,124 @@
+# Path to parent folder with experiment folders in them
+experiment_dir: '/home/fritz/PycharmProjects/cluster_joint_fail_ant'
+
+# File to save parsed experiments as. Can be absolute or relative to experiment_dir
+pickle_save_path: './joint_fail_ant_exps.pickle'
+
+# File to save plots. Can be absolute or relative to experiment_dir
+plot_save_path: './plots'
+
+parse:
+  key_path: ['joint_failure_prob']
+  readable_name: 'Joint Failure Prob.'
+  child_group:
+    key_path: ['policy_kwargs', 'actor_cspn_args', 'entropy_objective']
+    readable_name: 'Entropy Objective'
+    color: 'tab10'
+    child_group:
+      key_path: ['seed']
+      readable_name: 'seed'
+      operations: ['min', 'mean', 'max']
+      child_group:
+        step_key: 'time/total_timesteps'
+        min_steps: 1e6
+        keys_to_plot: [
+          'rollout/ep_rew_mean',
+          'train/naive_ent_approx',
+          'train/huber_entropy_LB',
+          'train/recursive_ent_approx',
+          'train/lay2/rep./weight_entropy/mean',
+          'train/lay4/rep./weight_entropy/mean',
+          'train/lay6/rep./weight_entropy/mean',
+        ]
+        dtype: np.float16
+
+plot:
+  figure_options:
+    x_axis_label: 'Steps'
+    y_axis_label: 'Reward'
+    # x_axis_range: [0, 1500000]
+    size: [7, 7]
+    dpi: 200
+
+  legend:
+    title: 'Policy'
+    loc: 'lower right'
+    # Rename group values in the legend
+    mapping:
+      '<none>': 'MLP Policy'
+      'augmented_huber': 'SPN (Augmented Huber)'
+      'huber': 'SPN (Huber)'
+      'naive': 'SPN (Naive)'
+      'recursive': 'SPN (Recursive)'
+
+  plot_definitions:
+    'Episode Reward':
+      content:
+        fill:
+          key_regexp: ['^min_roll', '^max_roll']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_roll'
+          color_alpha: 1.0
+          add_to_legend: True
+    'Huber Entropy LB':
+      content:
+        fill:
+          key_regexp: ['^min_train/huber', '^max_train/huber']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_train/huber'
+          color_alpha: 1.0
+          add_to_legend: True
+    'Recursive Entropy Approx':
+      content:
+        fill:
+          key_regexp: ['^min_train/recur', '^max_train/recur']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_train/recur'
+          color_alpha: 1.0
+          add_to_legend: True
+    'Naive Entropy Approx':
+      content:
+        fill:
+          key_regexp: ['^min_train/naive', '^max_train/naive']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_train/naive'
+          color_alpha: 1.0
+          add_to_legend: True
+    'Layer 2 - Mixture Coefficient Entropies':
+      content:
+        fill:
+          key_regexp: ['^min_train/lay2/rep./weight_ent', '^max_train/lay2/rep./weight_ent']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_train/lay2/rep./weight_ent'
+          color_alpha: 1.0
+          add_to_legend: True
+    'Layer 4 - Mixture Coefficient Entropies':
+      content:
+        fill:
+          key_regexp: ['^min_train/lay4/rep./weight_ent', '^max_train/lay4/rep./weight_ent']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_train/lay4/rep./weight_ent'
+          color_alpha: 1.0
+          add_to_legend: True
+    'Layer 6 - Mixture Coefficient Entropies':
+      content:
+        fill:
+          key_regexp: ['^min_train/lay6/rep./weight_ent', '^max_train/lay6/rep./weight_ent']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_train/lay6/rep./weight_ent'
+          color_alpha: 1.0
+          add_to_legend: True
