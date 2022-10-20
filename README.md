@@ -3,22 +3,21 @@ This tool can help you group, aggregate and plot your WandB experiments across m
 
 ## Prerequisites 
 Certain prerequisites need to be met to use this tool. 
-1. In the experiments, the configuration keys to group by must have been saved with WandB using `wandb.config.update(your_config)`
-2. The metrics you need must have been logged separately in a csv called `progress.csv`. 
-It may be possible to retrieve the metrics somehow else but this isn't implemented for now. 
-3. The directories to group and aggregate over must have the following structure:
+1. In the experiments, the configuration keys you want to group by must have been 
+saved with WandB using `wandb.config.update(your_config)`
+2. The directories to group and aggregate over must share a common parent directory like so:
 ```
 experiment_dir
-├── wandb_group1
-│    ├── wandb_experiment1_of_group1
-│    │    ├── progress.csv  # The metrics need to be saved here
+├── ... any depth of directories
+│    ├── wandb_experiment1
+│    │    ├── progress.csv  # Will be created by parse_wandb_dirs.py
 │    │    └── wandb
 │    │         └── run-...
 │    │              └── files
 │    │                   └── config.yaml  # This is where wandb.config.update() saves its configuration 
 │    │
-│   ... any number of experiment directories with this structure
-│    │
+│   ... any number of experiment directories with the structure of wandb_experiment1
+│    
 ... any number of group folders containing experiment directories
 ```
 
@@ -33,27 +32,41 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-### Grouping and aggregation
-`parse_wandb_dirs.py` will group and aggregate logged metrics of your WandB experiments that are saved locally. 
-The logged metrics must be present in the experiment directory as a csv named `progress.csv`. 
-Grouping is done based on the WandB config you saved during runtime using `wandb.config.update(your_config)`.
-For aggregation, you can select different NumPy functions such as min, max or mean. 
-The aggregated metrics are pickled and saved. 
+This tool follows an incremental approach. 
+The yaml config file defines all behavior. 
+An example yaml is provided in this directory. 
 
-### Plotting
-`plot_parsed_wandb_dirs.py` takes the pickled metrics and creates plots based on a yaml config specified by you 
-and creates plots from them.
-
-### Example
-An example yaml is provided in this repository. 
-It is tailored to the case I needed it for, but it might give you an idea on how to use it. 
-Once you have your own config set up, you can run 
+### 1. Download metrics
+Populate the `root_dir`, `csv_file_name`, `pickle_save_path`, `wandb_entity` and `wandb_project` fields of your yaml. 
+Then, run 
 ```bash
 # Make sure you venv is activated and that you are in the correct directory!
-python parse_wandb_dirs.py -c path_to_your_yaml
+python 01_download_metrics.py -c path-to-your-yaml
 ```
-to parse the metrics and 
+to download the metrics and save them in the experiment folders as csv files. 
+
+### 2. Find plottable data and keys to group by
+The script
 ```bash
-python plot_parsed_wandb_dirs.py -c path_to_your_yaml
+python 02_explore_metrics.py -c path-to-your-yaml
 ```
-to plot them.
+will give you key paths you can group by and the names of metrics you can plot. 
+You can now populate the `parse` field of your yaml with the hierarchical grouping that you want to group your 
+metrics by before plotting. 
+In the final `child_group`, put in the names of the metrics you want to plot. 
+At the level of where you want to aggregate your metrics, add the appropriate `operations`. 
+
+### 3. Group and aggregate metrics
+The requested grouping and aggregation will be performed in 
+```bash
+python 03_explore_metrics.py -c path-to-your-yaml
+```
+It will save the result in a pickle file. 
+
+### 4. Plotting
+Now you can populate the `plot` field of your yaml. 
+Running 
+```bash
+python 03_explore_metrics.py -c path-to-your-yaml
+```
+will plot the grouped and aggregated metrics that were pickled in the previous step. 
