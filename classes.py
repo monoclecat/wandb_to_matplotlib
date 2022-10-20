@@ -171,7 +171,6 @@ class Group:
         else:
             self.__key_path = [key_path]
         self.__name = readable_name
-        self.__filter = filter
         self.__color = color
         self.__child_group = child_group
         self.__subgroups = {}
@@ -226,7 +225,6 @@ class Group:
         key = get_key_path_value(self.key_path.copy(), run)
         if isinstance(key, list):
             key = tuple(key)
-        # key = self.follow_key_path(run)
         if key not in self.__subgroups.keys():
             if isinstance(self.__child_group, Group):
                 self.__subgroups[key]: Group = copy.deepcopy(self.__child_group)
@@ -237,27 +235,6 @@ class Group:
             return self.__subgroups[key].add_run(run)
         else:
             return self.__subgroups[key].add(run['data'])
-
-    def follow_key_path(self, d: Dict):
-        val = d
-        try:
-            for k in self.__key_path:
-                val = self.get_value(val[k])
-        except KeyError:
-            raise KeyError(str(self.__key_path))
-        if self.__filter is not None:
-            assert isinstance(val, str)
-            new_val = None
-            for f in self.__filter:
-                index = val.find(f)
-                if index != -1:
-                    new_val = f
-                    break
-            assert new_val is not None, f"None of the filters {self.__filter} was found in {val}"
-            val = new_val
-        if val is None:
-            val = '<none>'
-        return val
 
     def apply_operations(self):
         assert self.__operation_results is None
