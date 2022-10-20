@@ -1,124 +1,132 @@
 # Path to parent folder with experiment folders in them
-experiment_dir: '/home/fritz/PycharmProjects/cluster_joint_fail_ant'
+root_dir: '/home/fritz/PycharmProjects/ent_max_4d_R3_S2_I3'
+
+# Will look for csv file in experiment_dir/group_dir/experiment_dir/csv_file_name in all group_dirs and
+# their contained experiment_dirs. If the csv is not found it will create it.
+csv_file_name: 'progress.csv'
+
+# WandB information. This is not saved in the experiment directory.
+wandb_entity: 'monoclecat'
+wandb_project: 'ent_max_4d_R3_S2_I3'
 
 # File to save parsed experiments as. Can be absolute or relative to experiment_dir
-pickle_save_path: './joint_fail_ant_exps.pickle'
+pickle_save_path: './ent_max_4d_R3_S2_I3.pickle'
 
 # File to save plots. Can be absolute or relative to experiment_dir
 plot_save_path: './plots'
 
 parse:
-  key_path: ['joint_failure_prob']
-  readable_name: 'Joint Failure Prob.'
+  key_path: ['objective']
+  readable_name: 'Entropy objective'
+  color: 'tab10'
   child_group:
-    key_path: ['policy_kwargs', 'actor_cspn_args', 'entropy_objective']
-    readable_name: 'Entropy Objective'
-    color: 'tab10'
+    key_path: ['seed']
+    readable_name: 'seed'
+    operations: ['min', 'mean', 'max']
     child_group:
-      key_path: ['seed']
-      readable_name: 'seed'
-      operations: ['min', 'mean', 'max']
-      child_group:
-        step_key: 'time/total_timesteps'
-        min_steps: 1e6
-        keys_to_plot: [
-          'rollout/ep_rew_mean',
-          'train/naive_ent_approx',
-          'train/huber_entropy_LB',
-          'train/recursive_ent_approx',
-          'train/lay2/rep./weight_entropy/mean',
-          'train/lay4/rep./weight_entropy/mean',
-          'train/lay6/rep./weight_entropy/mean',
-        ]
-        dtype: np.float16
+      step_key: '_step'
+      min_steps: 10000
+      step_delta: 500
+      keys_to_plot: [
+        '2/rep./weight_entropy/mean',
+        '4/rep./weight_entropy/mean',
+        'MC_root_entropy',
+        'VI_ent_approx',
+        'huber_entropy_LB',
+      ]
+      dtype: np.float16
 
 plot:
-  figure_options:
+  legend:
+    title: 'Entropy Objective'
+    loc: 'lower right'
+    # Rename group values in the legend
+    mapping:
+      '<none>': 'NONE'
+      'huber_hack': 'Augmented Huber LB'
+      'huber': 'Huber LB'
+      'mc': 'Naive Approx'
+      'vi': 'Recursive Approx'
+
+  global_figure_options:
+    # Will be overridden by local plot_definitions
     x_axis_label: 'Steps'
-    y_axis_label: 'Reward'
+    ignore_keys: ['vi_aux_no_grad']
     # x_axis_range: [0, 1500000]
     size: [7, 7]
     dpi: 200
 
-  legend:
-    title: 'Policy'
-    loc: 'lower right'
-    # Rename group values in the legend
-    mapping:
-      '<none>': 'MLP Policy'
-      'augmented_huber': 'SPN (Augmented Huber)'
-      'huber': 'SPN (Huber)'
-      'naive': 'SPN (Naive)'
-      'recursive': 'SPN (Recursive)'
-
   plot_definitions:
-    'Episode Reward':
+    'Huber Entropy LB':  # The plot title
+      figure_options:
+        y_axis_label: 'Entropy [nats]'
       content:
         fill:
-          key_regexp: ['^min_roll', '^max_roll']
+          key_regexp: ['^min_huber', '^max_huber']
           color_alpha: 0.3
           add_to_legend: False
         line:
-          key_regexp: '^mean_roll'
-          color_alpha: 1.0
-          add_to_legend: True
-    'Huber Entropy LB':
-      content:
-        fill:
-          key_regexp: ['^min_train/huber', '^max_train/huber']
-          color_alpha: 0.3
-          add_to_legend: False
-        line:
-          key_regexp: '^mean_train/huber'
+          key_regexp: '^mean_huber'
           color_alpha: 1.0
           add_to_legend: True
     'Recursive Entropy Approx':
+      figure_options:
+        y_axis_label: 'Entropy [nats]'
       content:
         fill:
-          key_regexp: ['^min_train/recur', '^max_train/recur']
+          key_regexp: ['^min_VI', '^max_VI']
           color_alpha: 0.3
           add_to_legend: False
         line:
-          key_regexp: '^mean_train/recur'
+          key_regexp: '^mean_VI'
+          color_alpha: 1.0
+          add_to_legend: True
+    'Naive Entropy Approx (Without Naive Objective)':
+      figure_options:
+        y_axis_label: 'Entropy [nats]'
+        ignore_keys: ['vi_aux_no_grad', 'mc']  # overrides the global option
+      content:
+        fill:
+          key_regexp: ['^min_MC', '^max_MC']
+          color_alpha: 0.3
+          add_to_legend: False
+        line:
+          key_regexp: '^mean_MC'
           color_alpha: 1.0
           add_to_legend: True
     'Naive Entropy Approx':
+      figure_options:
+        y_axis_label: 'Entropy [nats]'
       content:
         fill:
-          key_regexp: ['^min_train/naive', '^max_train/naive']
+          key_regexp: ['^min_MC', '^max_MC']
           color_alpha: 0.3
           add_to_legend: False
         line:
-          key_regexp: '^mean_train/naive'
+          key_regexp: '^mean_MC'
           color_alpha: 1.0
           add_to_legend: True
     'Layer 2 - Mixture Coefficient Entropies':
+      figure_options:
+        y_axis_label: 'Entropy [nats]'
       content:
         fill:
-          key_regexp: ['^min_train/lay2/rep./weight_ent', '^max_train/lay2/rep./weight_ent']
+          key_regexp: ['^min_2/rep./weight_ent', '^max_2/rep./weight_ent']
           color_alpha: 0.3
           add_to_legend: False
         line:
-          key_regexp: '^mean_train/lay2/rep./weight_ent'
+          key_regexp: '^mean_2/rep./weight_ent'
           color_alpha: 1.0
           add_to_legend: True
     'Layer 4 - Mixture Coefficient Entropies':
+      figure_options:
+        y_axis_label: 'Entropy [nats]'
       content:
         fill:
-          key_regexp: ['^min_train/lay4/rep./weight_ent', '^max_train/lay4/rep./weight_ent']
+          key_regexp: ['^min_4/rep./weight_ent', '^max_4/rep./weight_ent']
           color_alpha: 0.3
           add_to_legend: False
         line:
-          key_regexp: '^mean_train/lay4/rep./weight_ent'
-          color_alpha: 1.0
-          add_to_legend: True
-    'Layer 6 - Mixture Coefficient Entropies':
-      content:
-        fill:
-          key_regexp: ['^min_train/lay6/rep./weight_ent', '^max_train/lay6/rep./weight_ent']
-          color_alpha: 0.3
-          add_to_legend: False
-        line:
-          key_regexp: '^mean_train/lay6/rep./weight_ent'
+          key_regexp: '^mean_4/rep./weight_ent'
           color_alpha: 1.0
           add_to_legend: True
