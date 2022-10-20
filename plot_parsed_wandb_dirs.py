@@ -1,8 +1,8 @@
 import os.path
-import re
 import pickle
+import yaml
+from util import build_plot_defs_from_config
 
-from classes import *
 
 if __name__ == "__main__":
     # mpl.use('Agg')
@@ -13,8 +13,8 @@ if __name__ == "__main__":
 
     with open(args.config, 'r') as file:
         config: dict = yaml.safe_load(file)
-        assert all([k in config.keys() for k in ['plot', 'experiment_dir', 'pickle_save_path', 'plot_save_path']])
-        exp_dir = config.get('experiment_dir')
+        assert all([k in config.keys() for k in ['plot', 'root_dir', 'pickle_save_path', 'plot_save_path']])
+        exp_dir = config.get('root_dir')
         assert os.path.isdir(exp_dir), f"Path {exp_dir} is not a directory!"
         os.chdir(exp_dir)
         pickle_path = config.get('pickle_save_path')
