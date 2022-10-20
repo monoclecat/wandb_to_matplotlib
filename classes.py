@@ -1,14 +1,18 @@
 import os
-import re
-from typing import List, Dict, Optional, Tuple, Any, Callable, Type, Pattern
+from typing import List, Dict, Optional, Tuple, Callable, Type, Pattern
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import yaml
-import matplotlib as mpl
 import copy
 from dataclasses import dataclass
+
+
+def get_key_path_value(key_path, d):
+    if not key_path:
+        return d
+    key = key_path.pop(0)
+    return get_key_path_value(key_path, d[key])
 
 
 @dataclass
@@ -41,7 +45,6 @@ class PlotDef:
     line_defs: List[BaseLineDef] = None
     title: str = None
     figure_options: Dict = None
-    legend_title: str = None
 
 
 @dataclass
@@ -156,66 +159,6 @@ class Metrics:
         return f"{'empty' if self.empty else 'filled'} {', '.join([k for k in self.metrics.keys()])}"
 
 
-def build_group_from_config(d: Dict):
-    if 'child_group' in d.keys():
-        new_ops = None
-        if (ops := d.get('operations')) is not None:
-            new_ops = []
-            for op in ops:
-                if op == 'min':
-                    new_ops.append(Operation(np.min, 'min'))
-                elif op == 'mean':
-                    new_ops.append(Operation(np.mean, 'mean'))
-                elif op == 'max':
-                    new_ops.append(Operation(np.max, 'max'))
-                else:
-                    raise NotImplementedError()
-        return Group(
-            key_path=d.get('key_path'),
-            readable_name=d.get('readable_name'),
-            color=mpl.cm.get_cmap(col).colors if (col := d.get('color')) is not None else None,
-            operations=new_ops,
-            child_group=build_group_from_config(d.get('child_group'))
-        )
-    else:
-        data_type = d.get('dtype')
-        if data_type is not None:
-            if 'float64' in data_type:
-                data_type = np.float64
-            if 'float32' in data_type:
-                data_type = np.float32
-            if 'float16' in data_type:
-                data_type = np.float16
-            else:
-                raise NotImplementedError()
-        return MetricsDef(
-            step_key=d.get('step_key'),
-            min_steps=int(float(s)) if (s := d.get('min_steps')) is not None else None,
-            keys_to_plot=[re.compile(p) for p in d.get('keys_to_plot')],
-            dtype=data_type,
-        )
-
-
-def build_plot_defs_from_config(d: Dict):
-    fig_opt = d.get('figure_options')
-    plot_defs = []
-    for title, plot_def in d.get('plot_definitions').items():
-        assert 'content' in plot_def.keys()
-        contents = []
-        for content_type, content_kwargs in plot_def.get('content').items():
-            if content_type == 'fill':
-                content_kwargs['key_regexp'] = [re.compile(p) for p in content_kwargs.get('key_regexp')]
-                contents.append(FillDef(**content_kwargs))
-            elif content_type == 'line':
-                content_kwargs['key_regexp'] = re.compile(content_kwargs.get('key_regexp'))
-                contents.append(LineDef(**content_kwargs))
-            else:
-                raise NotImplementedError(f"Don't know what to do with a content type of {content_type}")
-        plot_def.pop('content')
-        plot_defs.append(PlotDef(line_defs=contents, title=title, figure_options=fig_opt, **plot_def))
-    return plot_defs
-
-
 class Group:
     def __init__(self, key_path, readable_name, color=None, filter: Optional[List[str]] = None, child_group: Optional = None,
                  operations: Optional[List[Operation]] = None):
@@ -264,6 +207,10 @@ class Group:
         return self.__subgroups
 
     @property
+    def key_path(self):
+        return self.__key_path
+
+    @property
     def key(self):
         return self.__key_path[-1]
 
@@ -276,7 +223,10 @@ class Group:
 
     def add_run(self, run: Dict):
         assert 'data' in run.keys()
-        key = self.follow_key_path(run)
+        key = get_key_path_value(self.key_path.copy(), run)
+        if isinstance(key, list):
+            key = tuple(key)
+        # key = self.follow_key_path(run)
         if key not in self.__subgroups.keys():
             if isinstance(self.__child_group, Group):
                 self.__subgroups[key]: Group = copy.deepcopy(self.__child_group)
@@ -333,7 +283,7 @@ class Group:
             m.metrics.update(new_metrics)
             self.__operation_results = m
 
-    def plot(self, plot_option: PlotDef, title_prefix: str = None, fig_save_path: str = None,
+    def plot(self, plot_option: PlotDef, title_prefix: str = None, fig_save_dir: str = None,
              legend_options: Dict = None):
         if any(have_res := [g.operation_results is not None for g in self.__subgroups.values()]):
             assert all(have_res)
@@ -345,6 +295,8 @@ class Group:
                 dpi=dpi if (dpi := fig_opt.get('dpi')) else 200,
             )
             for g_index, (g_name, g) in enumerate(self.__subgroups.items()):
+                if (ign := fig_opt.get('ignore_keys')) is not None and g_name in ign:
+                    continue
                 res = g.operation_results
                 for line_def in opt.line_defs:
                     if (leg_map := legend_options.get('mapping')) is not None and line_def.add_to_legend:
@@ -396,10 +348,15 @@ class Group:
                 assert len(x_axis_range) == 2
                 ax1.set_xbound(x_axis_range[0], x_axis_range[1])
             fig.tight_layout()
-            if fig_save_path is not None:
+            if fig_save_dir is not None:
                 file_name = title_prefix
-                file_name = file_name.lower().replace('.', '_').replace(' ', '').replace(':', '') + '.png'
-                fig.savefig(os.path.join(fig_save_path, file_name))
+                file_name = file_name.lower().replace('.', '_').replace(' ', '').replace(':', '')
+                fig_save_path = os.path.join(fig_save_dir, file_name + '.png')
+                # i = 1
+                # while os.path.exists(fig_save_path):
+                    # fig_save_path = os.path.join(fig_save_dir, file_name + str(i) + '.png')
+                    # i += 1
+                fig.savefig(fig_save_path)
             else:
                 fig.show()
             plt.close(fig)
@@ -407,7 +364,7 @@ class Group:
             return [g.plot(
                 plot_option=plot_option,
                 title_prefix=f"{title_prefix} - {self.name}: {k}",
-                fig_save_path=fig_save_path,
+                fig_save_dir=fig_save_dir,
                 legend_options=legend_options,
             ) for k, g in self.__subgroups.items()]
 
