@@ -327,7 +327,7 @@ class Group:
             fig.tight_layout()
             if fig_save_dir is not None:
                 file_name = title_prefix
-                file_name = file_name.lower().replace('.', '_').replace(' ', '').replace(':', '')
+                file_name = file_name.lower().replace('.', '_').replace(' ', '').replace(':', '').replace('/', '-')
                 fig_save_path = os.path.join(fig_save_dir, file_name + '.png')
                 # i = 1
                 # while os.path.exists(fig_save_path):
@@ -356,9 +356,7 @@ class Group:
         raise NotImplemented()
 
     def __repr__(self):
-        if isinstance(self.__child_group, Group):
-            child_repr = '\n' + '\n'.join([f'{k}:' + f'\n{g.__repr__()}'.replace('\n', '\n\t')
-                                    for k, g in self.__subgroups.items()])
-            return f"{self.key}:" + child_repr.replace('\n', '\n\t')
-        else:
-            return f"{self.key}: {', '.join(str(k) for k in self.__subgroups.keys())}"
+        child_repr = '\n' + '\n'.join([f'{k}:' + f'\n{g.__repr__()}'.replace('\n', '\n\t')
+                                       for k, g in self.__subgroups.items()])
+        op_res = f' Operation result - {op.__repr__()}' if (op := self.operation_results) is not None else ''
+        return f"{self.key}:{op_res}" + child_repr.replace('\n', '\n\t')

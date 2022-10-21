@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
     group = build_group_from_config(config.get('parse'))
     populate_group(exp_dirs, config, group)
-    print(group)
     group.apply_operations()
+    print(group)
     with open(os.path.join(config.get('pickle_save_path')), 'wb') as f:
         pickle.dump(group, f, pickle.HIGHEST_PROTOCOL)
