@@ -27,6 +27,27 @@ def parse_config(path_to_config: str):
     return config
 
 
+def download_run_configs(root_dir: str, wandb_entity: str, wandb_project: str, exclude_run_ids: List = None):
+    if exclude_run_ids is None:
+        exclude_run_ids = []
+    api = wandb.Api()
+    runs = api.runs(wandb_entity + '/' + wandb_project)
+    for run in runs:
+        if run.id in exclude_run_ids:
+            continue
+        local_run_path = root_dir
+        if (group := run.group) is not None:
+            local_run_path = os.path.join(local_run_path, group)
+        timestamp = run.created_at.replace('-', '').replace(':', '').replace('T', '_')
+        local_run_path = os.path.join(local_run_path, run.name, 'wandb', f'run-{timestamp}-{run.id}')
+
+        local_files_path = os.path.join(local_run_path, 'files')
+        os.makedirs(local_files_path, exist_ok=True)
+        with open(os.path.join(local_files_path, 'config.yaml'), 'w') as f:
+            yaml.dump(run.config, f)
+    return
+
+
 def find_wandb_dirs(parent_dir: str) -> List[str]:
     if not os.path.isdir(parent_dir):
         return []
@@ -57,18 +78,41 @@ def apply_func_to_metrics(exp_dirs: List[str], config: Dict, func: Callable, **k
     """
     for exp_dir in exp_dirs:
         log_prefix = f"{exp_dir}: \n\t"
-        wandb_run_dir = None
-        if os.path.exists(wandb_path := os.path.join(exp_dir, 'wandb')):
-            wandb_run_dir = [fn for fn in os.listdir(wandb_path) if fn.startswith("run")]
+        wandb_run_dir = find_wandb_run_dir_in_exp_dir(exp_dir)
         if wandb_run_dir is None:
             continue
-        assert len(wandb_run_dir) == 1
-        wandb_run_dir = wandb_run_dir[0]
         with open(os.path.join(exp_dir, 'wandb', wandb_run_dir, 'files', 'config.yaml'), 'r') as file:
             experiment_config = yaml.safe_load(file)
             experiment_config = without_intermediate_value_keys(experiment_config)
         path_to_csv = os.path.join(exp_dir, config.get('csv_file_name'))
         func(**locals(), **kwargs)
+
+
+def find_wandb_run_dir_in_exp_dir(exp_dir: str):
+    wandb_run_dir = None
+    if os.path.exists(wandb_path := os.path.join(exp_dir, 'wandb')):
+        wandb_run_dir = [fn for fn in os.listdir(wandb_path) if fn.startswith("run")]
+    if wandb_run_dir is None:
+        return wandb_run_dir
+    assert len(wandb_run_dir) == 1
+    wandb_run_dir = wandb_run_dir[0]
+    return wandb_run_dir
+
+
+def run_id_from_wandb_run_dir(wandb_run_dir: str):
+    run_name_components = wandb_run_dir.split('-')
+    return run_name_components[-1]
+
+
+def run_ids_in_exp_dirs(exp_dirs: List):
+    run_ids = []
+    for exp_dir in exp_dirs:
+        wandb_run_dir = find_wandb_run_dir_in_exp_dir(exp_dir)
+        if wandb_run_dir is None:
+            continue
+        run_id = run_id_from_wandb_run_dir(wandb_run_dir)
+        run_ids.append(run_id)
+    return run_ids
 
 
 def download_metrics_and_save_as_csv(exp_dirs: List[str], config: Dict):
@@ -79,8 +123,8 @@ def download_metrics_and_save_as_csv(exp_dirs: List[str], config: Dict):
             assert wandb_entity is not None and wandb_proj is not None, \
                 "In order to connect with the WandB API, the wandb_entity and wandb_project " \
                 "must be provided in the yaml!"
-            run_name_components = wandb_run_dir.split('-')
-            run_api_identifier = f"{wandb_entity}/{wandb_proj}/{run_name_components[-1]}"
+            run_id = run_id_from_wandb_run_dir(wandb_run_dir)
+            run_api_identifier = f"{wandb_entity}/{wandb_proj}/{run_id}"
             print(log_prefix + "Downloading metrics from WandB")
             data = download_from_wandb(run_identifier=run_api_identifier)
             pd.DataFrame.from_dict(data).to_csv(path_to_csv)
@@ -161,10 +205,12 @@ def download_from_wandb(run_identifier: str) -> Dict:
         new_keys = row_keys - metrics_keys
         for k in new_keys:
             metrics[k] = [float('NaN')] * nr_logged_metrics
-        for k in row_keys:
+        metrics_keys = set(metrics.keys())
+        for k in metrics_keys:
             metrics[k].append(row[k])
         nr_logged_metrics += 1
-        assert all([len(m) == nr_logged_metrics for m in metrics.values()])
+        if not all([len(m) == nr_logged_metrics for m in metrics.values()]):
+            print(1)
     return metrics
 
 

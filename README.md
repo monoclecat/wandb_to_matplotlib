@@ -1,25 +1,8 @@
 # Create plots from scattered WandB experiments
-This tool can help you group, aggregate and plot your WandB experiments across multiple folders in nested directories. 
+This tool can help you download, group, aggregate, and plot your WandB experiments across multiple folders in nested directories. 
 
-## Prerequisites 
-Certain prerequisites need to be met to use this tool. 
-1. In the experiments, the configuration keys you want to group by must have been 
+The configuration keys you want to group the experiment metrics by must have been 
 saved with WandB using `wandb.config.update(your_config)`
-2. The directories to group and aggregate over must share a common parent directory like so:
-```
-experiment_dir
-├── ... any depth of directories
-│    ├── wandb_experiment1
-│    │    ├── progress.csv  # Will be created by parse_wandb_dirs.py
-│    │    └── wandb
-│    │         └── run-...
-│    │              └── files
-│    │                   └── config.yaml  # This is where wandb.config.update() saves its configuration 
-│    │
-│   ... any number of experiment directories with the structure of wandb_experiment1
-│    
-... any number of group folders containing experiment directories
-```
 
 ## Installation
 ```bash
@@ -44,6 +27,22 @@ Then, run
 python 01_download_metrics.py -c path-to-your-yaml
 ```
 to download the metrics and save them in the experiment folders as csv files. 
+This script will build a directory structure in the `root_dir` which is also built by wandb when running the experiment. 
+```
+experiment_dir
+├── ... any depth of directories
+│    ├── wandb_experiment1
+│    │    ├── progress.csv  # Will be created by parse_wandb_dirs.py
+│    │    └── wandb
+│    │         └── run-...
+│    │              └── files
+│    │                   └── config.yaml
+│    │
+│   ... any number of experiment directories with the structure of wandb_experiment1
+│    
+... any number of group folders containing experiment directories
+```
+Existing `config.yaml` files will not be overwritten. 
 
 ### 2. Find plottable data and keys to group by
 The script
