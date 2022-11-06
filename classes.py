@@ -6,6 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import copy
 from dataclasses import dataclass
+from slugify import slugify
 
 
 def get_key_path_value(key_path, d):
@@ -104,6 +105,7 @@ class Metrics:
         if self_max_step is None:
             self_max_step = df_step_max
 
+        assert self.step_delta is not None, "step_delta was not set in config!"
         pad_len = int((self_max_step - df_step_max) / self.step_delta)
         assert pad_len == 0 if isinstance(df, pd.DataFrame) else True
         pad_df = True if pad_len > 0 else False
@@ -223,6 +225,8 @@ class Group:
     def add_run(self, run: Dict):
         assert 'data' in run.keys()
         key = get_key_path_value(self.key_path.copy(), run)
+        if key is None:
+            key = 'None'
         if isinstance(key, list):
             key = tuple(key)
         if key not in self.__subgroups.keys():
@@ -313,7 +317,8 @@ class Group:
                     else:
                         raise NotImplementedError()
             if len(ax1.lines) == 0:
-                print(f"No parsed data found for plot {title_prefix}")
+                print(f"No parsed data found to plot \n\t{title_prefix}\n"
+                      f"Did you forget to add the metrics to keys_to_plot?")
                 return
             ax1.legend(title=legend_options.get('title'), loc=legend_options.get('loc'))
             ax1.set_title(title_prefix)
@@ -326,13 +331,8 @@ class Group:
                 ax1.set_xbound(x_axis_range[0], x_axis_range[1])
             fig.tight_layout()
             if fig_save_dir is not None:
-                file_name = title_prefix
-                file_name = file_name.lower().replace('.', '_').replace(' ', '').replace(':', '').replace('/', '-')
-                fig_save_path = os.path.join(fig_save_dir, file_name + '.png')
-                # i = 1
-                # while os.path.exists(fig_save_path):
-                    # fig_save_path = os.path.join(fig_save_dir, file_name + str(i) + '.png')
-                    # i += 1
+                os.makedirs(fig_save_dir, exist_ok=True)
+                fig_save_path = os.path.join(fig_save_dir, slugify(title_prefix) + '.png')
                 fig.savefig(fig_save_path)
             else:
                 fig.show()
@@ -341,7 +341,7 @@ class Group:
             return [g.plot(
                 plot_option=plot_option,
                 title_prefix=f"{title_prefix} - {self.name}: {k}",
-                fig_save_dir=fig_save_dir,
+                fig_save_dir=os.path.join(fig_save_dir, slugify(title_prefix)),
                 legend_options=legend_options,
             ) for k, g in self.__subgroups.items()]
 
