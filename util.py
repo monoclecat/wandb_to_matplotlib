@@ -48,14 +48,14 @@ def download_run_configs(root_dir: str, wandb_entity: str, wandb_project: str, e
     return
 
 
-def find_wandb_dirs(parent_dir: str) -> List[str]:
+def find_exp_dirs(parent_dir: str) -> List[str]:
     if not os.path.isdir(parent_dir):
         return []
     dir_contents = os.listdir(parent_dir)
     if 'wandb' in dir_contents:
         return [parent_dir]
     else:
-        list_of_lists = [find_wandb_dirs(os.path.join(parent_dir, c)) for c in dir_contents]
+        list_of_lists = [find_exp_dirs(os.path.join(parent_dir, c)) for c in dir_contents]
         flattened_list = [d for d_list in list_of_lists for d in d_list]
         return flattened_list
 

@@ -1,4 +1,4 @@
-from util import find_wandb_dirs, collect_metrics_columns, parse_config
+from util import find_exp_dirs, collect_metrics_columns, parse_config
 
 
 if __name__ == "__main__":
@@ -8,7 +8,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = parse_config(args.config)
-    exp_dirs = find_wandb_dirs(config.get('root_dir'))
+    exp_dirs = find_exp_dirs(config.get('root_dir'))
 
     available_columns, grouping_keys = collect_metrics_columns(exp_dirs, config)
     print("Keys that can be grouped by: \n\t{}".format('\n\t'.join([f'{list(k)}\t- found in {v} experiments'
