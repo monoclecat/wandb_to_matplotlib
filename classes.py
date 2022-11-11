@@ -83,7 +83,7 @@ class Metrics:
         max_step = self.max_step
         if max_step is None:
             return None
-        steps = np.arange(0, max_step + 1, self.step_delta)
+        steps = np.arange(0, max_step + self.step_delta, self.step_delta)
         assert max_step == steps[-1]
         return steps
 
@@ -349,7 +349,13 @@ class Group:
     def aggregate_metrics(self) -> Metrics:
         metrics = [g.aggregate_metrics() for g in self.__subgroups.values()]
         new_keys = list(set().union(*[set(m.config.keys_to_plot) for m in metrics]))
-        agg_metric = Metrics(MetricsDef(step_key='steps', keys_to_plot=new_keys))
+        step_delta = list(set([m.config.step_delta for m in metrics]))
+        step_key = list(set([m.config.step_key for m in metrics]))
+        assert len(step_delta) == 1
+        assert len(step_key) == 1
+        step_delta = step_delta[0]
+        step_key = step_key[0]
+        agg_metric = Metrics(MetricsDef(step_key=step_key, step_delta=step_delta, keys_to_plot=new_keys))
         [agg_metric.add(m) for m in metrics if not m.empty]
         return agg_metric
 
