@@ -52,6 +52,7 @@ plot:
     # Will be overridden by local plot_definitions
     x_axis_label: 'Steps'
     ignore_keys: ['vi_aux_no_grad']
+    file_format: 'png'
     # x_axis_range: [0, 1500000]
     size: [7, 7]
     dpi: 200

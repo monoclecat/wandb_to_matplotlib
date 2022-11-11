@@ -332,7 +332,8 @@ class Group:
             fig.tight_layout()
             if fig_save_dir is not None:
                 os.makedirs(fig_save_dir, exist_ok=True)
-                fig_save_path = os.path.join(fig_save_dir, slugify(title_prefix) + '.png')
+                file_format = f.replace('.', '') if (f := fig_opt.get('file_format')) is not None else 'png'
+                fig_save_path = os.path.join(fig_save_dir, slugify(title_prefix) + '.' + file_format)
                 fig.savefig(fig_save_path)
             else:
                 fig.show()
