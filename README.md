@@ -1,4 +1,4 @@
-# Create plots from scattered WandB experiments
+# Create plots from WandB experiments
 This tool can help you download, group, aggregate, and plot your WandB experiments across multiple folders in nested directories. 
 
 The configuration keys you want to group the experiment metrics by must have been 
