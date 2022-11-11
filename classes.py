@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Tuple, Callable, Type, Pattern
 
 import numpy as np
 import pandas as pd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import copy
 from dataclasses import dataclass
@@ -162,7 +163,7 @@ class Metrics:
 
 
 class Group:
-    def __init__(self, key_path, readable_name, color=None, filter: Optional[List[str]] = None, child_group: Optional = None,
+    def __init__(self, key_path, readable_name, child_group: Optional = None,
                  operations: Optional[List[Operation]] = None):
         if isinstance(key_path, list):
             self.__key_path = []
@@ -173,7 +174,6 @@ class Group:
         else:
             self.__key_path = [key_path]
         self.__name = readable_name
-        self.__color = color
         self.__child_group = child_group
         self.__subgroups = {}
         self.__operations = operations
@@ -198,10 +198,6 @@ class Group:
     @property
     def operation_results(self):
         return self.__operation_results
-
-    @property
-    def color(self):
-        return self.__color
 
     @property
     def subgroups(self):
@@ -280,12 +276,17 @@ class Group:
                     continue
                 res = g.operation_results
                 for line_def in opt.line_defs:
-                    if (leg_map := legend_options.get('mapping')) is not None and line_def.add_to_legend:
-                        g_label = leg_map[g_name] if g_name in leg_map.keys() else g_name
-                    else:
-                        g_label = None
+                    g_label = None
+                    g_color = None
+                    if (leg_map := legend_options.get('mapping')) is not None:
+                        if g_name in leg_map.keys():
+                            g_color = leg_map[g_name][1]
+                            col_map, col_map_ind = g_color.split(':')
+                            g_color = mpl.cm.get_cmap(col_map).colors[int(col_map_ind)]
+                        if line_def.add_to_legend:
+                            g_label = leg_map[g_name][0] if g_name in leg_map.keys() else g_name
                     plot_kwargs = {
-                        'color': self.color[g_index],
+                        'color': g_color,
                         'alpha': line_def.color_alpha,
                         'label': g_label,
                     }

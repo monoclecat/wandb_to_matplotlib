@@ -15,10 +15,9 @@ pickle_save_path: './ent_max_4d_R3_S2_I3.pickle'
 # File to save plots. Can be absolute or relative to experiment_dir
 plot_save_path: './plots'
 
-parse:
+parse:  # Evaluated in 03_group_and_aggregate_metrics
   key_path: ['objective']
   readable_name: 'Entropy objective'
-  color: 'tab10'
   child_group:
     key_path: ['seed']
     readable_name: 'seed'
@@ -36,17 +35,20 @@ parse:
       ]
       dtype: np.float16
 
-plot:
+plot:  # Evaluated in 04_plot_metrics
   legend:
     title: 'Entropy Objective'
     loc: 'lower right'
     # Rename group values in the legend
     mapping:
-      '<none>': 'NONE'
-      'huber_hack': 'Augmented Huber LB'
-      'huber': 'Huber LB'
-      'mc': 'Naive Approx'
-      'vi': 'Recursive Approx'
+      # The color associated to a name is name for the discrete color map from
+      # https://matplotlib.org/stable/gallery/color/colormap_reference.html
+      # followed by a colon and the index from that colormap
+      'None': ['MLP', 'tab10:0']  # [name to show in legend, color associated to this name]
+      'augmented_huber': ['SPN (Augmented Huber)', 'tab10:1']
+      'huber': ['SPN (Huber)', 'tab10:2']
+      'naive': ['SPN (Naive)', 'tab10:3']
+      'recursive': ['SPN (Recursive)', 'tab10:4']
 
   global_figure_options:
     # Will be overridden by local plot_definitions

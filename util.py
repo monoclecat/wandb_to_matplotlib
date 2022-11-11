@@ -231,7 +231,6 @@ def build_group_from_config(d: Dict):
         return Group(
             key_path=d.get('key_path'),
             readable_name=d.get('readable_name'),
-            color=mpl.cm.get_cmap(col).colors if (col := d.get('color')) is not None else None,
             operations=new_ops,
             child_group=build_group_from_config(d.get('child_group')),
         )
